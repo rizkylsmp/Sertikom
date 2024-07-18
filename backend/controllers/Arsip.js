@@ -1,10 +1,29 @@
 import ArsipModel from "../models/ArsipModel.js";
+import Kategori from "../models/KategoriModel.js";
+import multer from "multer";
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads");
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + "-" + file.originalname);
+  },
+});
+
+const upload = multer({ storage });
 
 export const getArsip = async (req, res) => {
   try {
     let response;
     response = await ArsipModel.findAll({
-      attributes: ["uuid", "noSurat", "kategori", "judul", "waktu"],
+      attributes: ["uuid", "noSurat", "judul", "file", "createdAt"],
+      include: [
+        {
+          model: Kategori,
+          attributes: ["nama"],
+        },
+      ],
     });
     res.status(200).json(response);
   } catch (error) {
@@ -23,10 +42,16 @@ export const getArsipById = async (req, res) => {
 
     let response;
     response = await ArsipModel.findOne({
-      attributes: ["uuid", "noSurat", "kategori", "judul", "waktu"],
+      attributes: ["uuid", "noSurat", "judul", "file", "createdAt"],
       where: {
         id: arsip.id,
       },
+      include: [
+        {
+          model: Kategori,
+          attributes: ["nama"],
+        },
+      ],
     });
     res.status(200).json(response);
   } catch (error) {
@@ -35,15 +60,18 @@ export const getArsipById = async (req, res) => {
 };
 
 export const createArsip = async (req, res) => {
-  const { noSurat, kategori, judul, waktu } = req.body;
+  const { noSurat, judul, kategoriId } = req.body;
+  const file = req.file ? req.file.filename : null;
+
+  if (!noSurat || !judul || !kategoriId) {
+    return res
+      .status(400)
+      .json({ msg: "NoSurat, Judul, and KategoriId are required" });
+  }
+
   try {
-    await ArsipModel.create({
-      noSurat: noSurat,
-      kategori: kategori,
-      judul: judul,
-      waktu: waktu,
-    });
-    res.status(201).json({ msg: "Data Created Successfuly" });
+    await ArsipModel.create({ noSurat, kategoriId, judul, file });
+    res.status(201).json({ msg: "Data Created Successfully" });
   } catch (error) {
     res.status(500).json({ msg: error.message });
   }
@@ -52,21 +80,23 @@ export const createArsip = async (req, res) => {
 export const updateArsip = async (req, res) => {
   try {
     const arsip = await ArsipModel.findOne({
-      where: {
-        uuid: req.params.id,
-      },
+      where: { uuid: req.params.id },
     });
     if (!arsip) return res.status(404).json({ msg: "Data tidak ditemukan" });
-    const { noSurat, kategori, judul, waktu } = req.body;
-    await ArsipModel.update(
-      { noSurat, kategori, judul, waktu },
-      {
-        where: {
-          id: arsip.id,
-        },
-      }
-    );
-    res.status(200).json({ msg: "Data updated successfuly" });
+
+    const { noSurat, judul } = req.body;
+    const file = req.file ? req.file.filename : arsip.file;
+
+    const updateData = {
+      ...(noSurat && { noSurat }),
+      ...(judul && { judul }),
+      file,
+    };
+
+    await ArsipModel.update(updateData, {
+      where: { id: arsip.id },
+    });
+    res.status(200).json({ msg: "Data updated successfully" });
   } catch (error) {
     res.status(500).json({ msg: error.message });
   }
@@ -80,7 +110,7 @@ export const deleteArsip = async (req, res) => {
       },
     });
     if (!arsip) return res.status(404).json({ msg: "Data tidak ditemukan" });
-    const { noSurat, kategori, judul, waktu } = req.body;
+    const { noSurat, judul } = req.body;
     await ArsipModel.destroy({
       where: {
         id: arsip.id,
